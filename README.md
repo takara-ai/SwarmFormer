@@ -169,7 +169,3 @@ For questions, collaborations, or other inquiries:
 
 - Email: research@takara.ai
 - Repository: https://github.com/takara-ai/SwarmFormer
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
