@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from swarmformer.swarmformer_binary_classification import SwarmFormerModel, IMDbDataset
 from torch.utils.data import DataLoader
 import time
 from tqdm import tqdm
@@ -9,9 +8,13 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import os
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from config import ModelConfig
+from typing import Dict, Any, Tuple
 
-def load_trained_model(config: ModelConfig, device: str = 'cuda'):
+from .model import SwarmFormerModel
+from .dataset import IMDbDataset
+from .config import ModelConfig
+
+def load_trained_model(config: ModelConfig, device: str = 'cuda') -> Tuple[SwarmFormerModel, IMDbDataset]:
     """Load the trained model with given configuration"""
     # Set seeds and environment variables to match training
     torch.manual_seed(42)
@@ -55,7 +58,7 @@ def load_trained_model(config: ModelConfig, device: str = 'cuda'):
     
     return model, test_dataset
 
-def evaluate_model(model, test_dataset, batch_size, device='cuda'):
+def evaluate_model(model: SwarmFormerModel, test_dataset: IMDbDataset, batch_size: int, device: str = 'cuda') -> Dict[str, Any]:
     """Evaluate the model on the test dataset"""
     model.eval()
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -107,13 +110,13 @@ def evaluate_model(model, test_dataset, batch_size, device='cuda'):
         'throughput': throughput_stats
     }
 
-def count_parameters(model):
+def count_parameters(model: SwarmFormerModel) -> Tuple[int, int]:
     """Count total and trainable parameters in the model"""
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return total_params, trainable_params
 
-def get_device():
+def get_device() -> torch.device:
     """Get the device to use for inference"""
     if torch.backends.mps.is_available():
         return torch.device("mps")

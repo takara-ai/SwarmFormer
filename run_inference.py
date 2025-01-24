@@ -1,6 +1,6 @@
 import torch
-from config import MODEL_CONFIGS, INFERENCE_BATCH_SIZE
-from inference_pipeline import load_trained_model, evaluate_model, count_parameters, get_device
+from swarmformer.config import MODEL_CONFIGS, INFERENCE_BATCH_SIZE
+from swarmformer.inference import load_trained_model, evaluate_model, count_parameters, get_device
 
 def run_inference(model_size: str = 'base'):
     """Run inference for a specific model size"""
