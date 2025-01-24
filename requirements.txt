@@ -1,0 +1,8 @@
+torch
+tqdm
+huggingface-hub
+numpy
+datasets
+transformers
+nltk
+optuna
