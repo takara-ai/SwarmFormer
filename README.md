@@ -18,22 +18,22 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
 ```
 
-3. Install dependencies:
+3. Install the package:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-## Usage
+## Running Inference
 
-Run inference using either the small or base model:
+The repository includes a sentiment analysis example that demonstrates how to use SwarmFormer models:
 
 ```bash
 # Run with base model (default)
-python run_inference.py
+python examples/sentiment_analysis/run_inference.py
 
 # Run with small model
-python run_inference.py --model-size small
+python examples/sentiment_analysis/run_inference.py --model-size small
 ```
 
 The script will:
@@ -89,28 +89,13 @@ Pre-trained models are available in the [SwarmFormer Collection](https://hugging
   - Recall: 91.46%
   - F1: 89.29%
 
-## Model Architecture
+## Memory Requirements
 
-Both models follow a hierarchical architecture:
+Memory requirements (with batch size 256):
 
-1. Token embedding layer with dropout
-2. Multiple SwarmFormer layers, each containing:
-   - Local swarm aggregator with gated updates
-   - Clustering mechanism
-   - Global cluster attention
-   - Broadcast updater
-3. Mean pooling and classification
-
-## Limitations
-
-- SwarmFormer-Small: Not suitable for sequences >256 tokens
-- SwarmFormer-Base: Not suitable for sequences >768 tokens
-- Models are trained for English text classification only
-- Not designed for text generation or translation tasks
-- Memory requirements (with batch size 256):
-  - Small: 8GB+ VRAM
-  - Base: 10GB+ VRAM
-  - Can be reduced by using smaller batch sizes
+- Small: 8GB+ VRAM
+- Base: 10GB+ VRAM
+- Can be reduced by using smaller batch sizes
 
 ## TODO
 
@@ -119,6 +104,7 @@ Both models follow a hierarchical architecture:
 - [ ] Add training configuration guide
 - [ ] Add evaluation scripts for custom datasets
 - [ ] Add model export utilities
+- [ ] Add pip package for SwarmFormer Layer
 
 ## Citation
 

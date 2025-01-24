@@ -1,8 +1,14 @@
+"""
+Model configuration for SwarmFormer variants.
+Defines the architecture and training hyperparameters for each model size.
+"""
+
 from dataclasses import dataclass
 from typing import Dict
 
 @dataclass
 class ModelConfig:
+    """Configuration class for SwarmFormer models."""
     d_model: int
     num_layers: int
     T_local: int
@@ -45,4 +51,5 @@ MODEL_CONFIGS = {
     'base': BASE_CONFIG
 }
 
+# Default batch size for inference
 INFERENCE_BATCH_SIZE = 256 

@@ -1,6 +1,9 @@
+"""
+Utilities for running inference with SwarmFormer models.
+"""
+
 import torch
 import torch.nn as nn
-from swarmformer.swarmformer_binary_classification import SwarmFormerModel, IMDbDataset
 from torch.utils.data import DataLoader
 import time
 from tqdm import tqdm
@@ -9,7 +12,17 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import os
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from config import ModelConfig
+
+from ..config.model_configs import ModelConfig
+from ..models.classification import SwarmFormerModel, IMDbDataset
+
+def get_device():
+    """Get the device to use for inference"""
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    elif torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
 
 def load_trained_model(config: ModelConfig, device: str = 'cuda'):
     """Load the trained model with given configuration"""
@@ -111,12 +124,4 @@ def count_parameters(model):
     """Count total and trainable parameters in the model"""
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    return total_params, trainable_params
-
-def get_device():
-    """Get the device to use for inference"""
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    elif torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu") 
+    return total_params, trainable_params 
