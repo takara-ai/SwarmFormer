@@ -42,6 +42,16 @@ The script will:
 - Run inference on the IMDb test set
 - Output model size, hyperparameters, accuracy metrics, and performance statistics
 
+## Hardware Support
+
+The models support the following hardware backends:
+
+- NVIDIA CUDA (primary, optimized)
+- Apple Silicon MPS
+- CPU
+
+Performance metrics listed below are based on CUDA execution. Performance may vary significantly on other backends.
+
 ## Pre-trained Models
 
 Pre-trained models are available in the [SwarmFormer Collection](https://huggingface.co/collections/takara-ai/swarmformer-678f8d9baec74b46f9aa3024) on HuggingFace:
