@@ -46,8 +46,61 @@ The script will:
 
 Pre-trained models are available in the [SwarmFormer Collection](https://huggingface.co/collections/takara-ai/swarmformer-678f8d9baec74b46f9aa3024) on HuggingFace:
 
-- SwarmFormer-Small: Lightweight model (2.1M parameters)
-- SwarmFormer-Base: Standard model (4.8M parameters)
+### SwarmFormer-Small
+
+- Lightweight model optimized for efficiency
+- Architecture:
+  - Embedding dimension: 128
+  - Number of layers: 2
+  - Local update steps: 3
+  - Cluster size: 8
+  - Sequence length: 256
+- Performance:
+  - Accuracy: 86.20%
+  - Inference time: 0.36s (25k samples)
+  - Mean batch latency: 3.67ms
+  - Throughput: 45k samples/s
+  - VRAM: 8GB minimum
+
+### SwarmFormer-Base
+
+- Standard model with higher capacity
+- Architecture:
+  - Embedding dimension: 192
+  - Number of layers: 2
+  - Local update steps: 3
+  - Cluster size: 4
+  - Sequence length: 768
+- Performance:
+  - Accuracy: 89.03%
+  - Mean batch latency: 4.83ms
+  - Peak memory: 9.13GB
+  - Precision: 87.22%
+  - Recall: 91.46%
+  - F1: 89.29%
+
+## Model Architecture
+
+Both models follow a hierarchical architecture:
+
+1. Token embedding layer with dropout
+2. Multiple SwarmFormer layers, each containing:
+   - Local swarm aggregator with gated updates
+   - Clustering mechanism
+   - Global cluster attention
+   - Broadcast updater
+3. Mean pooling and classification
+
+## Limitations
+
+- SwarmFormer-Small: Not suitable for sequences >256 tokens
+- SwarmFormer-Base: Not suitable for sequences >768 tokens
+- Models are trained for English text classification only
+- Not designed for text generation or translation tasks
+- Memory requirements (with batch size 256):
+  - Small: 8GB+ VRAM
+  - Base: 10GB+ VRAM
+  - Can be reduced by using smaller batch sizes
 
 ## TODO
 
