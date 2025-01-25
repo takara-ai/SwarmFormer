@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from huggingface_hub import PyTorchModelHubMixin
 
 class TokenEmbedding(nn.Module):
     def __init__(self, vocab_size=10, d_model=16):
@@ -169,7 +170,12 @@ class SwarmFormerLayer(nn.Module):
 
         return x_out
 
-class SwarmFormerModel(nn.Module):
+class SwarmFormerModel(nn.Module,
+                    PyTorchModelHubMixin,
+                    library_name="SwarmFormer",
+                    repo_url="https://github.com/takara-ai/SwarmFormer",
+                    tags = ["swarmformer"]
+                    ):
     def __init__(self, vocab_size=10, d_model=16, seq_len=16, cluster_size=4, num_layers=2, T_local=2):
         super().__init__()
         self.embedding = TokenEmbedding(vocab_size, d_model)

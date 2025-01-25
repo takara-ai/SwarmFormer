@@ -1,4 +1,3 @@
-import torch
 from swarmformer.config import MODEL_CONFIGS, INFERENCE_BATCH_SIZE
 from swarmformer.inference import load_trained_model, evaluate_model, count_parameters, get_device
 
