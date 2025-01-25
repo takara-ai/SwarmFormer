@@ -32,7 +32,7 @@ def load_trained_model(config: ModelConfig, device: str = 'cuda') -> Tuple[Swarm
     
     try :
         info = model_info(config.hf_model_id)
-        if "swarmformer" in info.tags:
+        if info.library_name == "swarmformer":
             model = SwarmFormerModel.from_pretrained(config.hf_model_id).to(device)
             model.eval()
         else : 

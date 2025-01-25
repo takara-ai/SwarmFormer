@@ -172,9 +172,8 @@ class SwarmFormerLayer(nn.Module):
 
 class SwarmFormerModel(nn.Module,
                     PyTorchModelHubMixin,
-                    library_name="SwarmFormer",
+                    library_name="swarmformer",
                     repo_url="https://github.com/takara-ai/SwarmFormer",
-                    tags = ["swarmformer"]
                     ):
     def __init__(self, vocab_size=10, d_model=16, seq_len=16, cluster_size=4, num_layers=2, T_local=2):
         super().__init__()
