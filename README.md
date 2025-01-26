@@ -65,17 +65,16 @@ The demo will:
 ```python
 from swarmformer.config import MODEL_CONFIGS
 from swarmformer.inference import load_trained_model, evaluate_model, get_device
+from transformers import AutoTokenizer
 
-# Get configuration and device
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
 config = MODEL_CONFIGS['base']  # or 'small'
 device = get_device()
 
-# Load model
-model, dataset = load_trained_model(config, device)
+model = load_trained_model(config, device)
 
-# Run inference
-metrics = evaluate_model(model, dataset, batch_size=256, device=device)
-print(f"Accuracy: {metrics['accuracy']:.4f}")
+base_model_result = inference(base_model, tokenizer, text)[2] # returns a touple, but the 3rd element is a JSON dictionary with easier to handle data
 ```
 
 ## Model Configurations
@@ -99,7 +98,8 @@ The package includes two pre-trained model configurations:
   - Recall: 91.46%
   - F1: 89.29%
   - Mean batch latency: 4.83ms
-  - Peak memory: 9.13GB
+  - Peak memory during inference: 150MB (Excluding overheads)
+  - Peak memory during evaluation/training: 9.13GB (with dataset loaded)
 
 ### SwarmFormer-Small
 
@@ -120,14 +120,15 @@ The package includes two pre-trained model configurations:
   - Inference time: 0.36s (25k samples)
   - Mean batch latency: 3.67ms
   - Throughput: 45k samples/s
-  - Peak memory: 8GB
+  - Peak memory during inference: 90MB (Excluding overheads)
+  - Peak memory during evaluation/training: 9.13GB (with dataset loaded)
 
 ## Hardware Support
 
 The package automatically selects the best available hardware:
 
-- NVIDIA CUDA GPUs (recommended, tested on RTX 2080 Ti)
-- Apple Silicon (M1/M2) via MPS
+- NVIDIA CUDA GPUs (recommended, tested on RTX 2080 Ti, RTX 3060, P104-100)
+- Apple Silicon (M1-M4) via MPS
 - CPU (fallback)
 
 ## Requirements

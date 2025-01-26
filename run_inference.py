@@ -15,7 +15,7 @@ def run_inference(model_size: str = 'base'):
     
     try:
         # Load model and dataset directly using config
-        model, test_dataset = load_trained_model(config, device)
+        model, test_dataset = load_trained_model(config, device, True) # new param, load dataset
         
         # Count and display model parameters
         total_params, trainable_params = count_parameters(model)

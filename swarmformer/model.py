@@ -170,8 +170,17 @@ class SwarmFormerLayer(nn.Module):
         return x_out
 
 class SwarmFormerModel(nn.Module):
-    def __init__(self, vocab_size=10, d_model=16, seq_len=16, cluster_size=4, num_layers=2, T_local=2):
+    def __init__(self, vocab_size=10, d_model=16, seq_len=16, cluster_size=4, num_layers=2, T_local=2): # why is the default sequence length 16?
         super().__init__()
+        
+        # future proofing code
+        self.vocab_size = vocab_size
+        self.seq_len = seq_len
+        self.cluster_size = cluster_size
+        self.d_model = d_model
+        self.num_layers = num_layers
+        self.T_local = T_local
+        
         self.embedding = TokenEmbedding(vocab_size, d_model)
         self.dropout_embedding = nn.Dropout(0.4)
         self.layers = nn.ModuleList([
