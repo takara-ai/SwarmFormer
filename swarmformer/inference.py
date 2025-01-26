@@ -1,12 +1,12 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 import time
 from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import os
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, model_info
+from huggingface_hub.errors import RepositoryNotFoundError
 from safetensors.torch import load_file
 from typing import Dict, Any, Tuple
 
@@ -30,30 +30,30 @@ def load_trained_model(config: ModelConfig, device: str = 'cuda') -> Tuple[Swarm
         augment=False
     )
     
-    # Initialize model with configuration
-    model = SwarmFormerModel(
-        vocab_size=test_dataset.vocab_size(),
-        d_model=config.d_model,
-        seq_len=config.seq_len,
-        cluster_size=config.cluster_size,
-        num_layers=config.num_layers,
-        T_local=config.T_local
-    ).to(device)
-    
-    # Turn off dropout for inference
-    for module in model.modules():
-        if isinstance(module, nn.Dropout):
-            module.p = 0.0
-    
-    # Download and load model weights from HuggingFace
-    try:
-        checkpoint_path = hf_hub_download(
-            repo_id=config.hf_model_id,
-            filename="model.safetensors"
-        )
-        state_dict = load_file(checkpoint_path)  # Load safetensors file
-        model.load_state_dict(state_dict, strict=False)
-    except Exception as e:
+    try :
+        info = model_info(config.hf_model_id)
+        if info.library_name == "swarmformer":
+            model = SwarmFormerModel.from_pretrained(config.hf_model_id).to(device)
+            model.eval()
+        else : 
+            # implement backward compatibility script 
+            model = SwarmFormerModel(
+                vocab_size=test_dataset.vocab_size(),
+                d_model=config.d_model,
+                seq_len=config.seq_len,
+                cluster_size=config.cluster_size,
+                num_layers=config.num_layers,
+                T_local=config.T_local
+            ).to(device)
+            checkpoint_path = hf_hub_download(
+                repo_id=config.hf_model_id,
+                filename="model.safetensors"
+            )
+            state_dict = load_file(checkpoint_path)  # Load safetensors file
+            model.load_state_dict(state_dict, strict=False)
+            model.eval()
+
+    except RepositoryNotFoundError as e:
         raise RuntimeError(f"Failed to load model from HuggingFace: {str(e)}")
     
     return model, test_dataset
