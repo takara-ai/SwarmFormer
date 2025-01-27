@@ -78,6 +78,23 @@ metrics = evaluate_model(model, dataset, batch_size=256, device=device)
 print(f"Accuracy: {metrics['accuracy']:.4f}")
 ```
 
+# HuggingFace Integration
+
+SwarmFormer now integrates seamlessly with the HuggingFace ecosystem, providing the following methods:
+
+```python
+# Save model to local directory
+model.save_pretrained("path/to/save")
+
+# Load model from local directory or HuggingFace Hub
+model = SwarmFormer.from_pretrained("takara-ai/swarmformer-base")
+
+# Push your fine-tuned model to HuggingFace Hub
+model.push_to_hub("your-username/your-model-name")
+```
+
+For detailed instructions on HuggingFace integration, see our [PR #2](https://github.com/takara-ai/SwarmFormer/pull/2).
+
 ## Model Configurations
 
 The package includes two pre-trained model configurations:
