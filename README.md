@@ -62,7 +62,7 @@ The demo will:
 
 ### Using in Your Code
 
-````python
+```python
 from swarmformer.config import MODEL_CONFIGS
 from swarmformer.inference import load_trained_model, evaluate_model, get_device
 
@@ -76,6 +76,7 @@ model, dataset = load_trained_model(config, device)
 # Run inference
 metrics = evaluate_model(model, dataset, batch_size=256, device=device)
 print(f"Accuracy: {metrics['accuracy']:.4f}")
+```
 
 # HuggingFace Integration
 
@@ -90,7 +91,7 @@ model = SwarmFormer.from_pretrained("takara-ai/swarmformer-base")
 
 # Push your fine-tuned model to HuggingFace Hub
 model.push_to_hub("your-username/your-model-name")
-````
+```
 
 For detailed instructions on HuggingFace integration, see our [PR #2](https://github.com/takara-ai/SwarmFormer/pull/2).
 
