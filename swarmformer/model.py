@@ -38,8 +38,10 @@ class LocalSwarmAggregator(nn.Module):
         B, L, D = x.shape
         x = self.dropout1(x)
         
+        # Bi-Directional view of tokens
+
         x_left = torch.roll(x, shifts=1, dims=1)
-        x_right = torch.roll(x, shifts=-1, dims=1)
+        x_right = torch.roll(x, shifts=-1, dims=1) 
         
         neighbor_info = (x_left + x + x_right) / 3.0
         update = self.mlp(neighbor_info)
