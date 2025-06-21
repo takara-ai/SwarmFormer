@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 @dataclass
 class ModelConfig:
+    vocab_size: int
     d_model: int
     num_layers: int
     T_local: int
@@ -14,6 +15,7 @@ class ModelConfig:
     hf_model_id: str
 
 SMALL_CONFIG = ModelConfig(
+    vocab_size=30522,
     d_model=128,
     num_layers=2,
     T_local=3,
@@ -27,6 +29,7 @@ SMALL_CONFIG = ModelConfig(
 )
 
 BASE_CONFIG = ModelConfig(
+    vocab_size=30522,
     d_model=192,
     num_layers=2,
     T_local=3,
