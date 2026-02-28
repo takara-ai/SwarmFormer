@@ -1,30 +1,9 @@
-"""
-CausalSwarmFormer: near-linear causal LM using SwarmFormer-style architecture.
-
-Complexity per layer: O(L + (L/cluster_size)²) ≈ O(L) for practical lengths.
-  - LocalAgg with dilated shifts: O(L)
-  - Cluster tokens (last-token-per-cluster): O(L)
-  - GQA attention on C cluster reps: O(C²) where C = L/cluster_size
-  - Expand back to token level: O(L)
-  - SwiGLU MLP: O(L)
-
-Supports dual forward paths for distillation training:
-  - use_cluster=True  → near-linear cluster attention (student)
-  - use_cluster=False → full O(L²) causal attention (teacher)
-Both paths share Q/K/V/O weights from SmolLM3.
-"""
-
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .config import CausalSwarmFormerConfig
-
-
-# ---------------------------------------------------------------------------
-# RMSNorm
-# ---------------------------------------------------------------------------
 
 class RMSNorm(nn.Module):
     def __init__(self, d_model: int, eps: float = 1e-6):
@@ -39,17 +18,11 @@ class RMSNorm(nn.Module):
         x = x / rms
         return (self.weight * x).to(dtype)
 
-
-# ---------------------------------------------------------------------------
-# Rotary Position Embeddings (RoPE)
-# ---------------------------------------------------------------------------
-
 class RotaryEmbedding(nn.Module):
     def __init__(self, head_dim: int, max_seq_len: int = 2048, theta: float = 5_000_000.0):
         super().__init__()
         inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self.max_seq_len = max_seq_len
 
     def forward(self, positions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         freqs = positions.float().unsqueeze(-1) * self.inv_freq.unsqueeze(0)
@@ -67,11 +40,6 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
 def apply_rotary_pos_emb(q, k, cos, sin):
     return q * cos + rotate_half(q) * sin, k * cos + rotate_half(k) * sin
 
-
-# ---------------------------------------------------------------------------
-# SwiGLU MLP (from SmolLM3, 1-1)
-# ---------------------------------------------------------------------------
-
 class SwiGLUMLP(nn.Module):
     def __init__(self, d_model: int, intermediate_size: int):
         super().__init__()
@@ -82,23 +50,10 @@ class SwiGLUMLP(nn.Module):
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
-
-# ---------------------------------------------------------------------------
-# Causal Local Swarm Aggregator (dilated shifts for full-cluster coverage)
-# ---------------------------------------------------------------------------
-
-DILATED_SHIFTS = [1, 2, 4, 8, 16, 32]  # covers 63 positions in one pass
-
-
 class CausalLocalSwarmAggregator(nn.Module):
-    """
-    Causal local aggregation with dilated shifts.
-    Each token sees positions 1,2,4,8,16,32 steps back in a single pass,
-    giving the last token in a 64-token cluster full coverage of its cluster.
-    """
-
-    def __init__(self, d_model: int):
+    def __init__(self, d_model: int, shifts: list[int] | None = None):
         super().__init__()
+        self.shifts = shifts or [1, 2, 4, 8]
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_model, bias=False),
             nn.GELU(),
@@ -121,7 +76,7 @@ class CausalLocalSwarmAggregator(nn.Module):
                 nn.init.xavier_uniform_(module.weight, gain=0.01)
                 if module.bias is not None:
                     if i == len(self.gate_net) - 2:
-                        nn.init.constant_(module.bias, -4.0)  # sigmoid(-4) ≈ 0.018
+                        nn.init.constant_(module.bias, -4.0)
                     else:
                         nn.init.zeros_(module.bias)
 
@@ -130,46 +85,69 @@ class CausalLocalSwarmAggregator(nn.Module):
         neighbor_sum = x.clone()
         n_valid = torch.ones(B, L, 1, device=x.device, dtype=x.dtype)
 
-        for s in DILATED_SHIFTS:
+        for s in self.shifts:
+            if s >= L:
+                continue
             shifted = torch.roll(x, shifts=s, dims=1)
-            # Zero out wrapped positions (causal: can't see future)
-            if s < L:
-                shifted[:, :s, :] = 0.0
-                mask = torch.ones(B, L, 1, device=x.device, dtype=x.dtype)
-                mask[:, :s, :] = 0.0
-                neighbor_sum = neighbor_sum + shifted
-                n_valid = n_valid + mask
-            # If s >= L, skip (all positions would be masked)
+            shifted[:, :s, :] = 0.0
+            mask = torch.ones(B, L, 1, device=x.device, dtype=x.dtype)
+            mask[:, :s, :] = 0.0
+            neighbor_sum = neighbor_sum + shifted
+            n_valid = n_valid + mask
 
         neighbor_info = neighbor_sum / n_valid
         update = self.mlp(neighbor_info)
         gates = self.gate_net(torch.cat([x, update], dim=-1))
         return x + gates * (update - x)
 
-
-# ---------------------------------------------------------------------------
-# Causal cluster tokens (last token, not mean pool)
-# ---------------------------------------------------------------------------
-
 def causal_cluster_tokens(x: torch.Tensor, cluster_size: int) -> torch.Tensor:
     B, L, D = x.shape
     assert L % cluster_size == 0
     num_clusters = L // cluster_size
-    return x.view(B, num_clusters, cluster_size, D)[:, :, -1, :]
+    return x.view(B, num_clusters, cluster_size, D)[:, :, -1, :].contiguous()
 
+class LearnedBroadcast(nn.Module):
+    """
+    Expands cluster attention output back to token level with per-token
+    modulation. Each token gets a UNIQUE output based on both the cluster
+    attention result and its own hidden state.
 
-# ---------------------------------------------------------------------------
-# GQA Attention — supports both cluster-rep and full-token paths
-# ---------------------------------------------------------------------------
+    broadcast(h, attn_out) = proj(cat(h, expanded_attn))
+
+    This is O(L) — just a linear projection per token.
+    """
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        # Projects concatenated [token_state, cluster_attn] → attention contribution
+        self.proj = nn.Linear(2 * d_model, d_model, bias=False)
+        self._init()
+
+    def _init(self):
+        # Initialize so the output ≈ the cluster attention part (second half of input)
+        # proj.weight is (d_model, 2*d_model). Set first d_model cols ≈ 0, last d_model cols ≈ I
+        nn.init.zeros_(self.proj.weight)
+        d = self.proj.weight.shape[0]
+        # Copy identity into the second half (cluster attn passthrough)
+        self.proj.weight.data[:, d:].copy_(torch.eye(d) * 0.9)
+        # Small random init for the first half (token modulation, learned)
+        nn.init.xavier_uniform_(self.proj.weight.data[:, :d], gain=0.05)
+
+    def forward(self, h: torch.Tensor, cluster_attn_out: torch.Tensor, cluster_size: int) -> torch.Tensor:
+        """
+        h: (B, L, D) — token-level hidden states (from local_agg)
+        cluster_attn_out: (B, C, D) — cluster attention output
+        Returns: (B, L, D) — per-token attention contribution (added to residual)
+        """
+        B, C, D = cluster_attn_out.shape
+        # Expand cluster output to token level
+        expanded = cluster_attn_out.unsqueeze(2).expand(B, C, cluster_size, D)
+        expanded = expanded.reshape(B, C * cluster_size, D)
+        # Concatenate token state + cluster attention, project to per-token output
+        combined = torch.cat([h, expanded], dim=-1)  # (B, L, 2D)
+        return self.proj(combined)  # (B, L, D)
 
 class CausalGQAttention(nn.Module):
-    """
-    GQA attention with SmolLM3 Q/K/V/O weights.
-    Two forward modes sharing the same weights:
-      forward_cluster: attention on C cluster reps → O(C²)
-      forward_full:    attention on L tokens → O(L²) (teacher)
-    """
-
     def __init__(self, d_model, num_heads, num_kv_heads, head_dim, use_rope=True):
         super().__init__()
         self.num_heads = num_heads
@@ -185,7 +163,6 @@ class CausalGQAttention(nn.Module):
         self.o_proj = nn.Linear(num_heads * head_dim, d_model, bias=False)
 
     def _attn(self, x, cos, sin):
-        """Core attention computation, works for any sequence length."""
         B, S, D = x.shape
         q = self.q_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(B, S, self.num_kv_heads, self.head_dim).transpose(1, 2)
@@ -206,17 +183,10 @@ class CausalGQAttention(nn.Module):
         return self.o_proj(out)
 
     def forward_cluster(self, cluster_reps, cos, sin):
-        """Attention on cluster reps only. O(C²) where C = num_clusters."""
         return self._attn(cluster_reps, cos, sin)
 
     def forward_full(self, x, cos, sin):
-        """Full attention on all tokens. O(L²). Used as teacher."""
         return self._attn(x, cos, sin)
-
-
-# ---------------------------------------------------------------------------
-# Causal SwarmFormer Layer
-# ---------------------------------------------------------------------------
 
 class CausalSwarmFormerLayer(nn.Module):
     def __init__(self, config: CausalSwarmFormerConfig, layer_idx: int):
@@ -227,7 +197,8 @@ class CausalSwarmFormerLayer(nn.Module):
         self.input_layernorm = RMSNorm(config.d_model, config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(config.d_model, config.rms_norm_eps)
 
-        self.local_agg = CausalLocalSwarmAggregator(config.d_model)
+        shifts = [2**i for i in range(int(math.log2(config.cluster_size)))]
+        self.local_agg = CausalLocalSwarmAggregator(config.d_model, shifts=shifts)
 
         use_rope = ((layer_idx + 1) % config.no_rope_layer_interval != 0)
         self.attn = CausalGQAttention(
@@ -238,49 +209,34 @@ class CausalSwarmFormerLayer(nn.Module):
             use_rope=use_rope,
         )
 
+        self.broadcast = LearnedBroadcast(config.d_model)
+
         self.mlp = SwiGLUMLP(config.d_model, config.intermediate_size)
 
     def forward(self, x, cos_full, sin_full, cos_cluster, sin_cluster, use_cluster=True):
-        """
-        x: (B, L, D)
-        cos_full/sin_full: (1, 1, L, head_dim) — RoPE for all token positions
-        cos_cluster/sin_cluster: (1, 1, C, head_dim) — RoPE for cluster positions
-        use_cluster: if True, near-linear cluster path. If False, O(L²) teacher.
-        """
         residual = x
         h = self.input_layernorm(x)
 
         if use_cluster:
-            # ── Near-linear cluster attention path ──
             for _ in range(self.T_local):
                 h = self.local_agg(h)
 
-            cluster_reps = causal_cluster_tokens(h, self.cluster_size)  # (B, C, D)
+            cluster_reps = causal_cluster_tokens(h, self.cluster_size)
             attn_out = self.attn.forward_cluster(cluster_reps, cos_cluster, sin_cluster)
 
-            # Expand cluster attention output to all tokens
-            B, C, D = attn_out.shape
-            expanded = attn_out.unsqueeze(2).expand(B, C, self.cluster_size, D)
-            expanded = expanded.reshape(B, C * self.cluster_size, D)
-
-            x = residual + expanded
+            attn_contrib = self.broadcast(h, attn_out, self.cluster_size)
+            x = residual + attn_contrib
         else:
-            # ── Full O(L²) attention path (teacher for distillation) ──
             attn_out = self.attn.forward_full(h, cos_full, sin_full)
             x = residual + attn_out
 
-        # MLP block (shared between both paths)
+        # MLP block
         residual = x
         x = self.post_attention_layernorm(x)
         x = self.mlp(x)
         x = residual + x
 
         return x
-
-
-# ---------------------------------------------------------------------------
-# CausalSwarmFormerForLM
-# ---------------------------------------------------------------------------
 
 class CausalSwarmFormerForLM(nn.Module):
     def __init__(self, config: CausalSwarmFormerConfig):
@@ -311,11 +267,9 @@ class CausalSwarmFormerForLM(nn.Module):
 
         x = self.embed_tokens(input_ids)
 
-        # RoPE for all token positions
         positions = torch.arange(L, device=input_ids.device)
         cos_full, sin_full = self.rotary_emb(positions)
 
-        # RoPE for cluster representative positions (last token in each cluster)
         cluster_pos = torch.arange(cs - 1, L, cs, device=input_ids.device)
         cos_cluster, sin_cluster = self.rotary_emb(cluster_pos)
 
@@ -336,8 +290,8 @@ class CausalSwarmFormerForLM(nn.Module):
             shift_logits = logits[:, :-1, :].contiguous()
             shift_labels = labels[:, 1:].contiguous()
             result["loss"] = F.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1),
+                shift_logits.reshape(-1, shift_logits.size(-1)),
+                shift_labels.reshape(-1),
                 ignore_index=-100,
             )
         return result

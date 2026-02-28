@@ -59,8 +59,8 @@ class CausalSwarmFormerConfig:
     num_kv_heads: int = 4          # KV heads (GQA 4:1)
     head_dim: int = 128
     intermediate_size: int = 11008
-    cluster_size: int = 64
-    T_local: int = 1
+    cluster_size: int = 16
+    T_local: int = 2
     rms_norm_eps: float = 1e-6
     rope_theta: float = 5_000_000.0
     no_rope_layer_interval: int = 4  # every 4th layer skips RoPE

@@ -47,7 +47,7 @@ except ImportError:
 DEFAULTS = dict(
     hf_model="HuggingFaceTB/SmolLM3-3B",
     num_layers=36,
-    cluster_size=64,
+    cluster_size=16,
     seq_len=512,
     batch_size=2,
     grad_accum=8,
@@ -116,8 +116,11 @@ def setup_trainable(model, train_attn, train_mlp, train_norms):
 
     trainable = []
     for layer in model.layers:
-        # Always train local_agg (the SwarmFormer-specific component)
+        # Always train local_agg + broadcast (SwarmFormer-specific)
         for p in layer.local_agg.parameters():
+            p.requires_grad = True
+            trainable.append(p)
+        for p in layer.broadcast.parameters():
             p.requires_grad = True
             trainable.append(p)
         if train_attn:
@@ -151,8 +154,8 @@ def distillation_loss(student_logits, teacher_logits, labels, alpha, temp):
     teacher_soft = F.softmax(teacher_logits / temp, dim=-1)
     kl = F.kl_div(student_soft, teacher_soft, reduction="batchmean") * (temp ** 2)
     ce = F.cross_entropy(
-        student_logits.view(-1, student_logits.size(-1)),
-        labels.view(-1), ignore_index=-100,
+        student_logits.reshape(-1, student_logits.size(-1)),
+        labels.reshape(-1), ignore_index=-100,
     )
     return alpha * kl + (1 - alpha) * ce, kl.item(), ce.item()
 
@@ -414,3 +417,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# holy claude
